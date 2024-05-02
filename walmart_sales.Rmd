@@ -1,0 +1,740 @@
+---
+title: "603-Walmart Sales"
+output:
+  html_notebook: default
+  word_document: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+date: "2024-03-19"
+---
+
+
+#### 1. Project Objectives 
+This project directs toward multiple linear regression analysis to explore the numerous factors influencing Walmart's weekly sales, including macroeconomic indicators, weather conditions, fuel prices, and holiday impacts
+
+We selected the dataset of weekly sales reported in 2012. 
+
+The following variables shown below were measured and are  considered for this problem
+
+1. Weekly_sales ($) sales for the given department in the given store.
+
+2. Temperature (F) - average temperature in the region.
+
+3. Fuel_Price - cost of fuel in the region.	
+
+4. CPI - the consumer price index
+
+5. Unemployment - the unemployment rate.
+
+6. IsHoliday - whether the week is a special holiday week.
+
+7. Size - floor area in SQF
+
+Here is the full addtitive model that is the starting point to optimize to the best predictive model.
+
+$$
+\hat{\text{Weekly_Sales}_i} = \beta_{0} + \beta_{1}\text{Temperature}_i + \beta_{2}\text{Fuel_price}_i + \beta_{3}\text{CPI}_i + \beta_{4}\text{Unemployment}_i + \beta_{5}\text{Size}_i + \beta_{6}\text{Holiday}_i
+$$
+
+#### 2. Results
+##### 2.1 Find the best predictive model 
+##### 2.1.1 Use the individual T-test to evaluate the significant predictors from the full model at $\alpha=0.05$ and write the estimated best fit model. 
+
+- Install packages 
+```{r}
+#install.packages("GGally")
+```
+
+- Read the dataset
+
+```{r}
+walmart = read.csv("C:/Users/Admin/My Drive/MDSA/Dataset/01. Supply Chain/Walmart/Walmart_sales_merged.csv")
+walmartNEW = walmart
+walmartNEW[which(walmart$Holiday_Flag=="1"),4] = "Yes"
+walmartNEW[which(walmart$Holiday_Flag=="0"),4] = "No"
+head(walmartNEW ,3)
+```
+
+
+
+```{R}
+full = lm(Weekly_Sales~Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag,data=walmartNEW)
+summary(full)
+```
+
+$$
+\hat{\text{Weekly_Sales}_i} = 503200 + 1362\text{Temperature}_i - 24420\text{Fuel_price}_i  - 1388\text{CPI}_i - 20770\text{Unemployment}_i + 7.222\text{Size}_i + 94670\text{Holiday}_i
+$$
+
+##### 2.1.2 Use all-possible-regressions-selection to find the ''best'' predictors of Week;y_sales. Pick model based on AIC? Adjusted $R^2$?
+
+- Stepwise regression
+
+```{r}
+library(olsrr)
+stepmod_sales = ols_step_both_p(full,p_ent=0.1,p_remove=0.3,details=FALSE)
+summary(stepmod_sales$model)
+```
+- Forward Regression
+```{r}
+library(olsrr)
+for_sales = ols_step_forward_p(full,p_val=0.1,details=FALSE)
+summary(for_sales$model)
+```
+
+- Backward Regression
+```{r}
+library(olsrr)
+back_sales = ols_step_backward_p(full,p_val=0.1,details=FALSE)
+summary(back_sales$model)
+```
+
+##### 2.1.3 Improve this model by adding an interaction term(s). Evaluate whether the interaction term(s) is(are) significant to be added in the model at $\alpha = 0.05$.  Summarize which model would you suggest using for predicting y.
+
+```{r}
+interact01 = lm(Weekly_Sales~(Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag)^2,data=walmartNEW)
+summary(interact01)
+```
+
+```{r}
+interact02 = lm(Weekly_Sales~Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+                          Temperature*Fuel_Price+ Temperature*CPI +
+                          Fuel_Price*CPI+
+                          CPI*Unemployment+CPI*Size+
+                          Unemployment*Size + Size*Holiday_Flag,data=walmartNEW)
+summary(interact02)
+```
+
+- Check Anova tables
+The hypothesis: $H_{0}:\beta_{i}= 0; H_{\alpha}:\beta_{i} \neq 0$
+```{r}
+anova(interact02,interact01)
+```
+- p value > 0.05, we fail to reject Null Hypothesis, accept the reduced model interact02
+
+
+##### 2.1.4 Improve this model by high order terms 
+
+- Make a pairs plot to look if we should do anything higher order
+
+The hypothesis: $H_{0}:\beta_{i}= 0; H_{\alpha}:\beta_{i} \neq 0 \text{ where i is at the variables with high orders}$
+
+```{r}
+library(GGally)
+saleswm_df = data.frame(walmartNEW$Temperature,walmartNEW$Fuel_Price,walmartNEW$CPI,walmartNEW$Unemployment,walmartNEW$Size,walmartNEW$Holiday_Flag)
+pairs(~Weekly_Sales + Temperature + Fuel_Price + CPI + Unemployment + Size,data=walmartNEW,panel=panel.smooth)
+```
+- It looks like Size & Fuel_Price could be higher order
+
+
+```{R}
+highorder1 = lm(Weekly_Sales~Temperature+Fuel_Price+I(Fuel_Price^2)+I(Fuel_Price^3)+
+                CPI+Unemployment+Size+I(Size^2)+I(Size^3)+factor(Holiday_Flag),
+                data=walmartNEW)
+summary(highorder1)
+```
+
+```{R}
+highorder2 = lm(Weekly_Sales~Temperature+Fuel_Price+I(Fuel_Price^2)+I(Fuel_Price^3)+I(Fuel_Price^4)+CPI+Unemployment+Size+I(Size^2)+I(Size^3)+I(Size^4)+factor(Holiday_Flag),data=walmartNEW)
+summary(highorder2)
+```
+
+- we lose all significance at high order 2.
+- The best polynomial model is the cubic model - highorder1
+$$
+\begin{align*}
+\hat{\text{Weekly_Sales}_i} = & -9826000 + 1754\text{Temperature}_i \\
+& + 8596000\text{Fuel_price}_i - 2455000\text{Fuel_price}_i^2 + 229800\text{Fuel_price}_i^3 \\
+& - 1254\text{CPI}_i - 24790\text{Unemployment}_i \\
+& + 23.490\text{Size}_i - 1.717 \times 10^{-4}\text{Size}_i^2 + 5.008 \times 10^{-10}\text{Size}_i^3 \\
+& + 94490\text{Holiday}_i
+\end{align*}
+$$
+
+##### 2.1.5 Compare AdjRsq and RSE between models
+
+```{R}
+data.frame(Model = c("full", "interact02", "highorder1"),
+           AdjRsq = c(summary(full)$adj.r.squared,
+                      summary(interact02)$adj.r.squared,
+                      summary(highorder1)$adj.r.squared),
+           RSE = c(summary(full)$sigma,
+                   summary(interact02)$sigma,
+                   summary(highorder1)$sigma))
+
+```
+
+- interact02 is the best predictive model with highest AdjRsq, lowest RSE
+
+**TEST**
+
+```{R}
+data.frame(Model = c("Full Additive Model - Full", "Interaction Model - interact02", "Polynomial Model - highorder1","Box-Cox Transformed Model - bcmodel02"),
+           AdjRsq = c(summary(full)$adj.r.squared,
+                      summary(interact02)$adj.r.squared,
+                      summary(highorder1)$adj.r.squared,
+                      summary(bcmodel02)$adj.r.squared),
+           RSE = c(summary(full)$sigma,
+                   summary(interact02)$sigma,
+                   summary(highorder1)$sigma,
+                   summary(bcmodel02)$sigma))
+
+```
+
+##### 2.1.6     
+```{r}
+library(leaps)
+best.subset_walmart3Y=regsubsets(Weekly_Sales~Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag,data=walmartNEW, nv=6 )
+BestSubset_Walmart3YSum= summary(best.subset_walmart3Y)
+rsquare=c(BestSubset_Walmart3YSum$rsq)
+cp=c(BestSubset_Walmart3YSum$cp)
+AdjustedR=c(BestSubset_Walmart3YSum$adjr2)
+BIC=c(BestSubset_Walmart3YSum$bic)
+cbind(rsquare,cp,BIC,AdjustedR)
+```
+
+```{r}
+BestSubset_Walmart3YSum
+```
+- Based on our selection criteria which is highest AdjRsq and relatively close to the lowest BIC, We chose model 6 which includes Temperature, Fuel_Price, CPI, Unemployment, Size, Holiday_Flag
+
+- The best predictive model is Interact02
+
+##### 2.2 Testing our assumptions 
+
+**Plots**
+```{r}
+par(mfrow=c(2,2))
+plot(interact02)
+```
+
+- The residual plot shows no discernible pattern. there's no strong evidence against linearity
+- The scale-location plot is quite horizontal, and there is not any funneling in the residual plot
+- There seems to be some sort of pattern happening with our residuals in the interaction model interact02. 
+
+**Equal Variances**<p>
+**The Breusch-Pagan Test**
+The hypothesis: $H_{0}:\text{common variance}; H_{\alpha}:\text{non-common variance}$
+
+```{r}
+library(lmtest)
+bptest(interact02)
+```
+- p value <0.05, reject Null Hypo so we conclude we do have heteroscedasticity. 
+
+
+**Normality Assumption**<p>
+
+**Shapiro Test**
+
+```{r}
+shapiro.test(residuals(interact02))
+```
+- We can't use Shapiro test for Normality because sample size > 5000
+
+**Anderson-Darling test**
+- Since Shapiro-Wilk Test couldnt perform on large sample size over 5000 rows. We use Anderson-Darling test instead
+- The Hypothesis : $H_{0}: \text{we have normality}; \; H_{\alpha}: \text{we do not have normality}$
+```{r}
+library(nortest)
+interact02_results <- ad.test(residuals(interact02))
+print(interact02_results)
+```
+- pvalue <0.05, reject Null, we don't have normality.
+
+
+**Multicollinearity**
+
+```{r}
+library(mctest) #for VIF
+full=lm(Weekly_Sales~Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag,data=walmartNEW)
+pairs(~Temperature+Fuel_Price+Size+CPI+Unemployment+Size, data=walmartNEW)
+```
+
+```{r}
+library(car)
+imcdiag(full, method="VIF")
+vif(full)
+```
+- From the output, we can see that 1<VIF<5, which suggests that there is no correlation between these predictors.
+
+**Conclusion on interaction model**<p>
+- Normality : There is  a concern on normality in this model
+- Linearity: The residuals are scattered around the horizontal line without a clear pattern, which is a good indication of linearity.
+- Equal Variance: From The Breusch-Pagan Test result with extremely low p value, we we do have heteroscedasticity
+- Multicollinearity: There is no correlation between selected predictors
+
+##### 2.3 Improve this model transformation if homodescacity and normality does not meet. 
+
+**Box-Cox Transformation**
+
+```{r}
+library(MASS)
+bc=boxcox(interact02,lambda=seq(-1,1))
+```
+
+```{R}
+bestlambda=bc$x[which(bc$y==max(bc$y))]
+bestlambda
+```
+**Fit model with this lambda**
+```{R}
+bcmodel=lm((((Weekly_Sales^0.1111)-1)/0.1111) ~ 
+             Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+             Temperature*Fuel_Price+ Temperature*CPI +
+             Fuel_Price*CPI+
+             CPI*Unemployment+CPI*Size+
+             Unemployment*Size + Size*Holiday_Flag,data=walmartNEW)
+summary(bcmodel)
+```
+**Reduced box cox model**
+```{R}
+bcmodel02=lm((((Weekly_Sales^0.1111)-1)/0.1111) ~ 
+               Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+                          Temperature*CPI +
+                          Fuel_Price*CPI+
+                          CPI*Unemployment+CPI*Size+
+                          Unemployment*Size,data=walmartNEW)
+summary(bcmodel02)
+```
+-Everthing looks significant in this model 
+
+$$
+\begin{align*}
+\left( \left( \text{Weekly_Sales}^{0.1111} \right) - 1 \right) / 0.1111 = & \ 35.96 + 0.018\text{Temperature}_i - 0.891\text{Fuel_price}_i \\
+& \ - 0.065\text{CPI}_i - 0.822\text{Unemployment}_i + 5.120 \times 10^{-5}\text{Size}_i + 0.338\text{HolidayFlag}_i \\
+& \ -8.072 \times 10^{-5}\text{Temperature}_i \times \text{CPI}_i + 0.005\text{Fuel_price}_i \times \text{CPI}_i + \\
+& \ +0.006 \text{CPI}_i \times \text{Unemployment}_i - 2.861 \times 10^{-8} \text{CPI}_i \times \text{Size}_i \\
+& \ -1.165 \times 10^{-6} \text{Unemployment}_i \times \text{Size}_i
+\end{align*}
+$$
+**Testing our assumptions**<p>
+**Plots**
+
+```{r}
+par(mfrow=c(2,2))
+plot(bcmodel02)
+hist(residuals(bcmodel02))
+```
+
+
+- The residuals are scattered around the horizontal line without a clear pattern, which is a good indication of linearity.
+- The scale-location plot is quite horizontal, and there is not any funneling in the residual plot
+- There seems to be some sort of pattern happening with our residuals in the boxcox model. 
+
+**Equal Variances**<p>
+- **The Breusch-Pagan Test**
+The hypothesis: $H_{0}:\text{common variance}; H_{\alpha}:\text{non-common variance}$
+
+```{r}
+bptest(bcmodel02)
+```
+- p value <0.05, reject Null, we do have heteroscedasticity
+
+**Normality Assumption**<p>
+**Anderson-Darling test**<p>
+- Since Shapiro-Wilk Test couldnt perform on large sample size over 5000 rows. We use Anderson-Darling test instead.<p> 
+- The Hypothesis : $H_{0}: \text{we have normality}; \; H_{\alpha}: \text{we do not have normality}$
+```{r}
+library(nortest)
+bcmodel02_results <- ad.test(residuals(bcmodel02))
+print(bcmodel02_results)
+```
+- pvalue <0.05, reject Null, we don't have normality.
+
+**Conclusion on box cox transformed model**<p>
+Normality : There is still a concern on normality in this model<p>
+Linearity: The residuals are scattered around the horizontal line without a clear pattern, which is a good indication of linearity.<p>
+Equal Variance:From The Breusch-Pagan Test result with extremely low p value, we we do have heteroscedasticity
+
+
+#### 2.4 Check for outliers 
+
+```{r}
+plot(bcmodel02,which=5)
+```
+- **Cooks Distance**
+```{r}
+plot(bcmodel02,pch=18,col="red",which=c(4)) #which =4 only prints the cook distance plot
+```
+
+**Leverage Points**
+
+```{r}
+lev=hatvalues(bcmodel02)
+p = length(coef(bcmodel02))
+n = nrow(walmartNEW)
+outlier2p = lev[lev>(2*p/n)]
+outlier3p = lev[lev>(3*p/n)]
+print("h_I>3p/n, outliers are")
+print(outlier3p)
+```
+```{r}
+plot(rownames(walmartNEW),lev, main = "Leverage in Walmart Sales Dataset", xlab="observation",
+ylab = "Leverage Value")
+abline(h = 2 *p/n, lty = 1)
+abline(h = 3 *p/n, lty = 1)
+```
+
+##### 2.7 Remove outliers
+
+```{r}
+outlier_indices <- as.numeric(names(outlier3p))
+walmart02 <- walmartNEW[-outlier_indices, ]
+nrow(walmart02)
+nrow(walmartNEW)
+```
+**Model after remove outliers**<p>
+**Full Additive Model**
+```{R}
+full02 = lm(Weekly_Sales~Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag,data=walmart02)
+summary(full02)
+```
+**Interaction Model**
+```{R}
+interact01_walmart02 = lm(Weekly_Sales~(Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag)^2,data=walmart02)
+summary(interact01_walmart02)
+```
+**Reduced Interaction Model**
+```{R}
+interact02_walmart02 = lm(Weekly_Sales~Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+                          Temperature*Fuel_Price+ Temperature*CPI +
+                          Fuel_Price*CPI+
+                          CPI*Unemployment+CPI*Size+
+                          Unemployment*Size + Size*Holiday_Flag,data=walmart02)
+summary(interact02_walmart02)
+```
+**Box Cox Transformed Model**
+
+```{r}
+library(MASS)
+bc03=boxcox(interact02_walmart02,lambda=seq(-1,1))
+```
+
+```{R}
+bestlambda02=bc03$x[which(bc03$y==max(bc03$y))]
+bestlambda02
+```
+**Fit model with this lambda**
+```{R}
+bcmodel03=lm((((Weekly_Sales^0.1313)-1)/0.1313) ~ Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+                          Temperature*Fuel_Price+ Temperature*CPI +
+                          Fuel_Price*CPI+
+                          CPI*Unemployment+CPI*Size+
+                          Unemployment*Size + Size*Holiday_Flag,data=walmart02)
+summary(bcmodel03)
+```
+**Reduced box cox model**<p>
+- Removed insignificance
+```{R}
+bcmodel04=lm((((Weekly_Sales^0.1313)-1)/0.1313) ~ Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+                          Temperature*CPI +
+                          Fuel_Price*CPI+
+                          CPI*Unemployment+CPI*Size+
+                          Unemployment*Size,data=walmart02)
+summary(bcmodel04)
+```
+**Assumptions Check**<p>
+**Plots**
+```{r}
+par(mfrow=c(2,2))
+plot(bcmodel04)
+```
+
+**Equal Variances**<p>
+**The Breusch-Pagan Test**
+```{r}
+library(lmtest)
+bptest(bcmodel04)
+```
+- p value <0.05, reject Null, we do have heteroscedasticity
+
+**Normality Assumption**<p>
+**Anderson-Darling test**<p>
+- Since Shapiro-Wilk Test couldnt perform on large sample size over 5000 rows. We use Anderson-Darling test instead.<p> 
+- The Hypothesis : $H_{0}: \text{we have normality}; \; H_{\alpha}: \text{we do not have normality}$
+```{r}
+library(nortest)
+bcmodel04_results <- ad.test(residuals(bcmodel04))
+print(bcmodel04_results)
+```
+- pvalue <0.05, reject Null, we don't have normality.
+
+
+**Conclusion**<p>
+- With transformed models on refinded dataset walmart02, we couldn't get rid of heteroscedasticity in a regression model.<p>
+- Next step, perform Weighted Least Squares to improve our model. This is not cover in class for DATA603, we did research by ourselves so there might be a knowledge gap in applying it properly. But we did give it a try. 
+
+#### 2.8 Weight Least Square method
+#### 2.8.1 WLS on full dataset without removing outliers
+
+
+```{r}
+fitted_values01 <- fitted(bcmodel02)
+weights01 <- 1 / (fitted_values01^2)
+wls01 <- lm((((Weekly_Sales^0.1111)-1)/0.1111) ~ 
+              Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+                          Temperature*CPI +
+                          Fuel_Price*CPI+
+                          CPI*Unemployment+CPI*Size+
+                          Unemployment*Size,data=walmartNEW,weight = weights01)
+summary(wls01)
+```
+- Everything looks significant in this model 
+
+
+$$
+\begin{align*}
+\left( \left( \text{Weekly_Sales}^{0.1111} \right) - 1 \right) / 0.1111 = & \ 35.220 + 0.016\text{Temperature}_i - 0.778\text{Fuel_price}_i \\
+& \ - 0.061\text{CPI}_i - 0.831\text{Unemployment}_i + 5.478 \times 10^{-5}\text{Size}_i + 0.3219\text{HolidayFlag}_i \\
+& \ -7.400 \times 10^{-5}\text{Temperature}_i \times \text{CPI}_i + 0.005\text{Fuel_price}_i \times \text{CPI}_i + \\
+& \ +0.006 \text{CPI}_i \times \text{Unemployment}_i - 4.604 \times 10^{-8} \text{CPI}_i \times \text{Size}_i \\
+& \ -1.183 \times 10^{-6} \text{Unemployment}_i \times \text{Size}_i
+\end{align*}
+$$
+
+
+
+**Assumptions Check**<p>
+**Plots**
+```{r}
+par(mfrow=c(2,2))
+plot(wls01)
+hist(residuals(wls01))
+```
+
+
+**Equal Variances**<p>
+**The Breusch-Pagan Test**
+```{r}
+library(lmtest)
+bptest(wls01)
+```
+pvalue >0.05, fail to reject Null, we do have homoscedasticity
+
+**Normality Assumption**<P>
+**Anderson-Darling test**<p>
+- Since Shapiro-Wilk Test couldnt perform on large sample size over 5000 rows. We use Anderson-Darling test instead <p>
+- The Hypothesis : $H_{0}: \text{we have normality}; \; H_{\alpha}: \text{we do not have normality}$
+```{r}
+library(nortest)
+wls01_results <- ad.test(residuals(wls01))
+print(wls01_results)
+```
+- pvalue <0.05, reject Null, we don't have normality.
+
+**Conclusion from this model**<p>
+- By applying WLS, we not only got significance in our model with higher AdjRsq and lower RSE, but we also met our equal variances assumption which we were struggling to solve it with OLS method. The spread of residuals across the range of fitted values does not show the same pattern of increasing spread with the increase in fitted values as before. This suggests that the heteroscedasticity may have been mitigated.<p>
+- However, there is still a concern about normality assumption based on its QQ plot. The Q-Q plot of the WLS model seems to have a slightly better alignment in the middle quantiles but still shows heavy tails.<p>
+- Next step, we test on model with removed outliers since the outliers are the heavy influencers on our normality.<p>
+
+#### 2.8.2 WLS on refined dataset with outliers removed
+
+
+```{r}
+fitted_values02 <- fitted(bcmodel04)
+weights02 <- 1 / (fitted_values02^2)
+wls02 <- lm((((Weekly_Sales^0.1313)-1)/0.1313) ~ Temperature+Fuel_Price+CPI+Unemployment+Size+Holiday_Flag+
+                          Temperature*CPI +
+                          Fuel_Price*CPI+
+                          CPI*Unemployment+CPI*Size+
+                          Unemployment*Size,data=walmart02,weights = weights02)
+summary(wls02)
+```
+
+**Assumptions Check**<p>
+**Plots**
+```{r}
+par(mfrow=c(2,2))
+plot(wls02)
+```
+
+
+**Normality Assumption**<p>
+**Anderson-Darling test**<p>
+- Since Shapiro-Wilk Test couldnt perform on large sample size over 5000 rows. We use Anderson-Darling test instead.<p>
+- The Hypothesis : $H_{0}: \text{we have normality}; \; H_{\alpha}: \text{we do not have normality}$
+```{r}
+library(nortest)
+wls02_results <- ad.test(residuals(wls02))
+print(wls02_results)
+```
+- pvalue <0.05, reject Null, we don't have normality.
+
+**Equal Variances**<p>
+**The Breusch-Pagan Test**
+```{r}
+library(lmtest)
+bptest(wls02)
+```
+- pvalue >0.05, fail to reject Null, we do have homoscedasticity
+
+**Conclusion**<p>
+Linearity:<p>
+- The removal of outliers seems to have resulted in a more uniform spread of residuals across the range of fitted values.<p>
+- The residuals are scattered around the horizontal line without a clear pattern, which is a good indication of linearity.<p>
+Equal Variance: Based on The Breusch-Pagan Test, we do have homoscedasticity.
+Normality:<p> 
+- There is still a concern on normality in this model.<p>
+- However, we expect this result as normality tests are known to be sensitive to large samples.Additionally, we're looking for predictive accuracy, and with limited knowledge at this stage, we accept the violation of the normality which means normality assumption might not be a significant issue.<p>
+
+
+#### 2.9 Experimental Design 
+#### 2.9.1 Are sales relatively higher during holiday seasons?**
+- We use Kruskal Test as this is a non parametric approach
+- The Hypothesis : $H_{0}:\mu_{Holiday}=\mu_{Non Holiday}= 0; H_{\alpha}: \mu_{Holiday}\neq\mu_{Non Holiday}$
+
+```{R}
+kruskal.test(Weekly_Sales~Holiday_Flag, data = walmartNEW)
+```
+- p value <0.05. We can conclude that average sales are different on weeks with a holiday compared to weeks without
+
+```{R}
+library(FSA)
+DT = dunnTest(Weekly_Sales~Holiday_Flag, data = walmartNEW,method="none")
+DT
+```
+- Since the p-value is less than 0.05, it suggests that there is a statistically significant difference between the two groups at the 5% significance level. The test suggests that there is a statistically significant difference in weekly sales between the weeks with a holiday and those without.
+- Since the z-value is negative, this suggest that sales are higher on weeks with a holiday compared to weeks without. 
+
+
+**compare WLS01 & WLS02**
+```{R}
+data.frame(Model = c("wls01", "wls02"),
+           AdjRsq = c(summary(wls01)$adj.r.squared,
+                      summary(wls02)$adj.r.squared),
+           RSE = c(summary(wls01)$sigma,
+                   summary(wls02)$sigma))
+
+```
+
+#### 2.9.2 Are sales relatively higher if the store is larger according to Store Type?**
+
+- We use Kruskal Test as this is a non parametric approach
+- The Hypothesis : 
+$H_{0}:\mu_{Type A Store}=\mu_{Type B Store}= \mu_{Type C Store}= 0; H_{\alpha}: \text{at least one }\mu_{i} \text{ is different i = 1,2,3...,c}$
+
+
+```{R}
+kruskal.test(Weekly_Sales~Type, data = walmartNEW)
+```
+
+
+```{R}
+library(FSA)
+DT01 = dunnTest(Weekly_Sales~factor(Type), data = walmartNEW,method="none")
+DT01
+```
+- Since the p-values are less than 0.05, it suggests that there are a statistically significant difference between the 3 groups. The test suggests that there is a statistically significant difference in weekly sales between Type of Store.
+- Since the z-values is positive, this suggest that Type A Stores' sales are higher than Type B & Type C. Sales of Store Type B is higher than Type C .
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{R}
+kruskal.test(Weekly_Sales~Store, data = walmartNEW)
+```
+```{R}
+library(FSA)
+DT02 = dunnTest(Weekly_Sales~Store, data = walmartNEW,method="none")
+DT02
+```
+
+
+
+
+```{r}
+CRD_sales=aov(Weekly_Sales~Store, data = walmartNEW) #Perform ANOVA for CRD
+#summary(CRD_sales)
+#library(agricolae)
+SNK = SNK.test(CRD_sales,"Store",group=TRUE)
+print(SNK)
+```
+**Extract SNK results and lookup the Store Size**
+```{r}
+SNK = read.csv("C:/Users/Admin/My Drive/MDSA/Dataset/01. Supply Chain/Walmart/SNKresults.CSV")
+head(SNK,3)
+```
+
+```{r}
+SNK01 <- SNK[order(-SNK$Weekly_Sales), ]
+library(ggplot2)
+ggplot(SNK01, aes(x = reorder(Store, -Weekly_Sales), y = Weekly_Sales, fill = Type)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(x = "Store", y = "Weekly Sales") +
+  ggtitle("Weekly Sales by Store")
+```
+```{r}
+SNK02 <- SNK[order(-SNK$Sales.per.sqf), ]
+library(ggplot2)
+ggplot(SNK02, aes(x = reorder(Store, -Sales.per.sqf), y = Sales.per.sqf, fill = Type)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  labs(x = "Store", y = "Weekly Sales") +
+  ggtitle("Sales per SQF by Store")
+```
+
+
+```{r}
+library(dplyr)
+top_stores <- SNK %>%
+  group_by(Store) %>%
+  summarise(Total_Sales = sum(Weekly_Sales, na.rm = TRUE)) %>%
+  arrange(desc(Weekly_Sales)) %>%
+  slice_head(n = 10)
+print(top_stores)
+```
+
+**Conclusion**
+
+
+
+
+
+
+
+```{r}
+library(dplyr)
+bot_stores <- walmartNEW %>%
+  group_by(Store) %>%
+  summarise(Total_Sales = sum(Weekly_Sales, na.rm = TRUE)) %>%
+  arrange(Total_Sales) %>%
+  slice_head(n = 3)
+print(bot_stores)
+```
+
