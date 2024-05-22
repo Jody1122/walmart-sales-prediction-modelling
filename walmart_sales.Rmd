@@ -1,5 +1,5 @@
 ---
-title: "603-Walmart Sales"
+title: "Walmart Sales Predicting Model"
 output:
   html_notebook: default
   word_document: default
